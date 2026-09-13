@@ -1,0 +1,6 @@
+[Unit]
+Description=Dispatch Codex Primer Slot
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -lc 'slot=$$(TZ=Asia/Shanghai date +%%H:%%M); systemctl start "codex-primer@$${slot}.service"'
