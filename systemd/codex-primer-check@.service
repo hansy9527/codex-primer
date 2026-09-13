@@ -1,0 +1,9 @@
+[Unit]
+Description=Codex Primer Result Check %i
+
+[Service]
+Type=oneshot
+ExecStart=/opt/codex-primer/scripts/check-result.sh %i
+User=root
+Group=root
+TimeoutStartSec=60
