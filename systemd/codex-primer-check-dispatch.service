@@ -1,0 +1,6 @@
+[Unit]
+Description=Dispatch Codex Primer Check Slot
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -lc 'now=$$(TZ=Asia/Shanghai date +%%H:%%M); case "$$now" in 07:05) slot=07:00 ;; 12:10) slot=12:05 ;; 17:15) slot=17:10 ;; 22:20) slot=22:15 ;; *) echo "Unexpected check time: $$now" >&2; exit 2 ;; esac; systemctl start "codex-primer-check@$${slot}.service"'
