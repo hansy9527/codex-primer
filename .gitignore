@@ -1,0 +1,15 @@
+# Sensitive credentials
+codex-home/auth.json
+config/notify.env
+
+# Runtime state
+state/
+logs/
+run/
+
+# Backups
+*.bak-*
+*.bak
+
+# Misc
+.DS_Store
