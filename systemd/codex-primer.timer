@@ -1,0 +1,15 @@
+[Unit]
+Description=Codex Primer Schedule
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 Asia/Shanghai
+OnCalendar=*-*-* 12:05:00 Asia/Shanghai
+OnCalendar=*-*-* 17:10:00 Asia/Shanghai
+OnCalendar=*-*-* 22:15:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=codex-primer-dispatch.service
+
+[Install]
+WantedBy=timers.target
