@@ -1,0 +1,2 @@
+cli_auth_credentials_store = "file"
+model_reasoning_effort = "low"
