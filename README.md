@@ -1,11 +1,11 @@
 # Codex Primer
 
-用于在固定时段自动调用一次 Codex，并在数分钟后通过 Bark 推送执行结果。
+用于在固定时段调用 Codex，失败自动重试；最终结果写入后立即通过 Bark 推送。
 
 ## 功能
 
 - 按北京时间每天 4 个时段自动执行 Codex：07:00、12:05、17:10、22:15
-- 每次执行 5 分钟后检查结果并通过 Bark 推送
+- 每次最多尝试 2 次，每次超时 180 秒，失败后等待 30 秒再重试；结束后立即通过 Bark 推送\n- Bark 消息包含每次尝试的退出码与安全的失败原因摘要
 - 使用 `gpt-5.6-luna`
 - 保存每次运行日志与 JSON 状态
 - 使用 `flock` 防止重复执行
@@ -114,7 +114,7 @@ Logged in using ChatGPT
 cp systemd/* /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now codex-primer.timer
-systemctl enable --now codex-primer-check.timer
+systemctl disable --now codex-primer-check.timer 2>/dev/null || true
 ```
 
 查看定时任务：
@@ -132,7 +132,7 @@ systemctl list-timers --all | grep codex-primer
 cat /opt/codex-primer/state/latest.json
 ```
 
-执行 Codex 后立即测试 Bark：
+执行 Codex 时会自动发送 Bark，不需要再单独运行检查脚本：
 
 ```bash
 /opt/codex-primer/scripts/prime.sh manual && \
@@ -206,7 +206,7 @@ Codex   Bark 检查
 
 ## 已知注意事项
 
-当前两个 timer 使用了：
+Codex 主 timer 使用了：
 
 ```ini
 Persistent=true
