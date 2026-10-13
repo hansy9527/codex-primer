@@ -43,8 +43,20 @@ for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
   else
     REASON="Codex 异常退出，退出码 $EXIT_CODE"
   fi
-  if [ "$RESULT" != success ] && grep -Eiq 'ERROR|error:|failed|unauthorized|forbidden' "$ATTEMPT_LOG"; then
-    REASON="$REASON；详细错误请查看 VPS 尝试日志"
+  if [ "$RESULT" != success ]; then
+    if grep -Eiq 'failed to refresh available models' "$ATTEMPT_LOG"; then
+      REASON="$REASON；模型列表刷新失败"
+    elif grep -Eiq '401|unauthorized|authentication failed' "$ATTEMPT_LOG"; then
+      REASON="$REASON；疑似认证失败（401）"
+    elif grep -Eiq '403|forbidden' "$ATTEMPT_LOG"; then
+      REASON="$REASON；服务端拒绝访问（403）"
+    elif grep -Eiq '429|rate.limit' "$ATTEMPT_LOG"; then
+      REASON="$REASON；请求频率或额度限制（429）"
+    elif grep -Eiq 'connection refused|connection reset|dns error|timed out|network error' "$ATTEMPT_LOG"; then
+      REASON="$REASON；网络连接或请求超时"
+    elif grep -Eiq 'ERROR|error:|failed' "$ATTEMPT_LOG"; then
+      REASON="$REASON；出现其他错误，详见 VPS 尝试日志"
+    fi
   fi
   ATTEMPT_RECORDS+=("$attempt|$EXIT_CODE|$RESULT|$REASON|$ATTEMPT_LOG")
   printf 'attempt=%s exit_code=%s result=%s reason=%s log=%s\n' "$attempt" "$EXIT_CODE" "$RESULT" "$REASON" "$ATTEMPT_LOG" >>"$OUTPUT_FILE"
