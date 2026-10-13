@@ -1,6 +1,23 @@
 # Codex Primer
 
-在 Linux VPS 上定时调用 Codex CLI，支持自定义每日执行时间、模型、超时与重试，并通过 Bark 推送成功或失败结果。
+在 Linux VPS 上定时或手动调用 Codex CLI，支持自定义每日执行时间、模型、超时与重试，并通过 Bark 推送成功或失败结果。
+
+## 项目初衷
+
+Codex 的部分使用额度采用滚动时间窗口。对于并非全天持续使用 Codex 的用户，可能希望提前安排一次轻量级调用，以便更合理地规划后续使用时间。
+
+**Codex Primer** 因此而开发：在 Linux VPS 上按预设时间或通过手动命令发起一次简单的 Codex CLI 请求，尝试提前启动适用的使用窗口，并记录执行结果。无需保持个人电脑开机。
+
+- **自动或手动执行**：按每日时间表运行，也可随时手动触发。
+- **轻量调用**：默认使用简单提示词，尽量减少不必要的 Token 消耗。
+- **结果可追踪**：记录执行状态、重试和日志，并通过 Bark 发送通知。
+- **灵活配置**：可自定义时区、执行时间、模型、超时和重试策略。
+
+> **使用边界与免责声明**
+>
+> - 本项目不会增加订阅额度，也不保证调用一定会开启、重置或改变使用窗口；具体行为取决于 OpenAI 当时的产品规则和额度机制。
+> - 使用者应遵守 [OpenAI 服务条款](https://openai.com/policies/terms-of-use/)、[使用政策](https://openai.com/policies/usage-policies/)及适用于自身账号和产品的其他规则，不得将本工具用于规避额度、访问限制或其他平台限制。
+> - 调用可能因 OpenAI 服务不可用、服务繁忙、网络故障、认证失效、额度限制、模型不可用或本机环境问题而失败；即使启用自动重试，也不保证最终成功。请以实际日志和状态文件为准。
 
 > 当前任务的成功条件是：Codex 退出码为 0，且输出包含独立一行 `OK`。默认提示词为 `Reply with exactly: OK`。本项目用于定时验证 Codex 调用是否正常，不是任意提示词的通用任务执行器。
 
@@ -216,6 +233,24 @@ sudo cat /opt/codex-primer/state/latest.json
 ```
 
 正常情况下，`result` 为 `success`，Codex 返回 `OK`，Bark 收到成功通知。注意模型调用可能需要几十秒或更久；即使 Codex 调用成功，Bark 也可能因网络或配置问题单独发送失败。
+
+### 4.5 手动执行（无需等待定时任务）
+
+完成 Codex 登录后，可随时执行一次任务，不必等待预设时间，也无需先启用 systemd 定时器：
+
+```bash
+sudo /opt/codex-primer/scripts/prime.sh manual
+echo "exit=$?"
+```
+
+手动执行同样使用 `config/app.env` 中的模型、提示词、超时和重试设置，并写入运行日志和状态文件；如果已正确配置 Bark，也会尝试发送结果通知。**手动执行会实际调用 Codex，可能消耗额度**。
+
+```bash
+sudo cat /opt/codex-primer/state/latest.json
+ls -lt /opt/codex-primer/state/history/ | head
+```
+
+如果安装目录不是 `/opt/codex-primer`，请相应替换路径。手动执行失败时，优先检查历史日志；失败可能来自 OpenAI 服务、网络、登录状态、使用额度或本机依赖，不能仅凭失败推断为程序缺陷。
 
 ## 5. 设置执行时间、模型和重试
 
