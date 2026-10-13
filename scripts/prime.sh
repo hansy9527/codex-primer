@@ -78,6 +78,16 @@ with open(path,"w") as f: json.dump(data,f,ensure_ascii=False,indent=2);f.write(
 PY
 cp "$STATE_FILE" "$BASE_DIR/state/latest.json"
 printf 'finished_at_local=%s\nexit_code=%s\nresult=%s\n' "$FINISHED_AT_LOCAL" "$EXIT_CODE" "$RESULT" >>"$OUTPUT_FILE"
+
+# Notify only after all attempts have completed and final state is durable.
+# Keep the Codex outcome independent of Bark delivery status.
+NOTIFY_EXIT=0
+"$BASE_DIR/scripts/check-result.sh" "$SLOT" >>"$OUTPUT_FILE" 2>&1 || NOTIFY_EXIT=$?
+if [ "$NOTIFY_EXIT" -ne 0 ]; then
+  printf 'Bark notification failed: exit_code=%s\n' "$NOTIFY_EXIT" >>"$OUTPUT_FILE"
+  echo "Bark notification failed (exit $NOTIFY_EXIT); see $OUTPUT_FILE" >&2
+fi
+
 if [ "$RESULT" = success ]; then exit 0; fi
 if [ "$EXIT_CODE" -eq 0 ]; then exit 1; fi
 exit "$EXIT_CODE"
