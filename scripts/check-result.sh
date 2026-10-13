@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -u
-BASE_DIR="/opt/codex-primer"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HISTORY_DIR="$BASE_DIR/state/history"
 CONFIG_FILE="$BASE_DIR/config/notify.env"
-APP_TZ="Asia/Shanghai"
+# shellcheck disable=SC1091
+source "$BASE_DIR/config/app.env"
 SLOT="${1:-}"
 if [ -z "$SLOT" ]; then echo "Usage: $0 HH:MM" >&2; exit 2; fi
 if [ ! -f "$CONFIG_FILE" ]; then echo "Notify config not found: $CONFIG_FILE" >&2; exit 3; fi
