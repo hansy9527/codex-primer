@@ -1,0 +1,9 @@
+[Unit]
+Description=Codex Primer Run %i
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=__BASE_DIR__/scripts/prime.sh %i
+TimeoutStartSec=__SERVICE_TIMEOUT__
