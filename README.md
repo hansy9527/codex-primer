@@ -312,4 +312,12 @@ sudo bash install.sh /opt/codex-primer
 
 **能在同一台机器安装两套独立实例吗？** 当前 systemd 单元名称固定为 `codex-primer.*`，因此不支持两套独立实例同时管理；指定另一个安装目录会替换 systemd 对应的运行路径。
 
-**可以把 `auth.json` 和 `notify.env` 提交到 GitHub 吗？** 不可以。这些文件包含敏感凭证，必须只保存在可信环境中。仓库已配置相关 `.gitignore`，但仍应在提交前人工检查。
+## 9. 安全与社区贡献
+
+**安全提醒：** 请勿将 `auth.json`、`notify.env` 等包含登录凭证或推送 Key 的文件提交到 GitHub。即使已配置 `.gitignore`，提交前也请检查；已被 Git 跟踪的文件不会因为新增忽略规则而自动取消跟踪。
+
+### Android 推送支持
+
+目前项目仅实现 **Bark（iOS）推送**，**尚未提供 Android 推送支持**。维护者目前没有 Android 设备，无法对 Android 推送方案进行实际测试和验收。
+
+欢迎有 Android 设备的开发者通过 **Pull Request（PR）** 贡献适配方案、测试结果及相关文档。建议保留现有 Bark 通知功能，并避免在代码、测试数据或提交记录中包含真实推送凭证。
