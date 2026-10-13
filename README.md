@@ -1,226 +1,175 @@
 # Codex Primer
 
-用于在固定时段调用 Codex，失败自动重试；最终结果写入后立即通过 Bark 推送。
+使用 systemd 定时调用 Codex CLI，自动重试失败请求，并在最终结果产生后立即通过 Bark 推送通知。适用于 Linux VPS，无需持续运行桌面电脑。
 
-## 功能
+> 本项目的定时调用仅验证 Codex 是否能够完成一个简短请求，不保证第三方服务的额度窗口或计费行为。请遵守服务提供方的使用条款。
 
-- 按北京时间每天 4 个时段自动执行 Codex：07:00、12:05、17:10、22:15
-- 每次最多尝试 2 次，每次超时 180 秒，失败后等待 30 秒再重试；结束后立即通过 Bark 推送\n- Bark 消息包含每次尝试的退出码与安全的失败原因摘要
-- 使用 `gpt-5.6-luna`
-- 保存每次运行日志与 JSON 状态
-- 使用 `flock` 防止重复执行
-- systemd timer 驱动，VPS 系统时区无需改成北京时间
+## 功能与执行流程
 
-## 目录
+- 北京时间（Asia/Shanghai）每天 **07:00、12:05、17:10、22:15** 启动一次
+- 使用 `gpt-5.6-luna`，发送 `Reply with exactly: OK`，成功条件为退出码 0 且输出存在独立一行 `OK`
+- 单次超时 180 秒，失败后等待 30 秒，**最多尝试 2 次**
+- 最终写入 JSON 状态及每次尝试的独立日志，然后**立即调用 Bark**；不再等待第二个定时器
+- Bark 报告成功或失败，失败时附带退出码、尝试次数、错误摘要与日志路径
+- 使用 `flock` 防止同一时间重复运行
+- Codex 执行结果与 Bark 发送结果分开处理：通知失败不会改变 Codex 的成功/失败判定
 
-运行时目录：
+执行链：`codex-primer.timer → codex-primer-dispatch.service → codex-primer@<时段>.service → prime.sh → check-result.sh`
 
-```text
-/opt/codex-primer/
-├── codex-home/
-│   ├── auth.json          # Codex 登录凭证，不提交 Git
-│   └── config.toml
-├── scripts/
-│   ├── prime.sh
-│   └── check-result.sh
-├── state/
-│   ├── latest.json
-│   └── history/
-├── logs/
-├── run/
-└── config/
-    └── notify.env         # Bark 密钥，不提交 Git
+**注意：** 这是同一执行流程，不是数据库事务；Bark 发送失败可能导致未收到通知，需查看 VPS 日志。旧的 `codex-primer-check.timer` 已不再使用。
+
+## 环境要求
+
+- Linux + systemd、bash、`flock`、GNU `timeout`、Python 3、`curl`、Git
+- Node.js / npm 和官方 Codex CLI（`@openai/codex`）
+- 已有可用的 Codex 登录方式及 Bark 服务地址和 Key
+- 服务器可以访问 Codex 所需的服务端接口
+
+安装或升级 Codex CLI：
+
+```bash
+npm install -g @openai/codex@latest
+codex --version
 ```
 
-systemd 文件安装到：
-
-```text
-/etc/systemd/system/
-```
-
-## 仓库结构
-
-```text
-.
-├── README.md
-├── .gitignore
-├── config/
-│   ├── config.toml
-│   └── notify.env.example
-├── scripts/
-│   ├── prime.sh
-│   └── check-result.sh
-└── systemd/
-    ├── codex-primer@.service
-    ├── codex-primer-check@.service
-    ├── codex-primer-dispatch.service
-    ├── codex-primer-check-dispatch.service
-    ├── codex-primer.timer
-    └── codex-primer-check.timer
-```
+建议使用受支持的最新稳定版本。网络异常、模型权限或账号额度问题不能仅靠升级解决。
 
 ## 安装
 
+本项目目前使用以下**固定路径**：
+
+- Git 工作目录：`/opt/codex-primer-repo`
+- 运行目录：`/opt/codex-primer`
+- systemd 单元目录：`/etc/systemd/system`
+
+以下示例适合**全新部署**，不要直接覆盖已有服务器的 `auth.json` 或 `notify.env`。
+
 ```bash
+git clone https://github.com/hansy9527/codex-primer.git /opt/codex-primer-repo
+cd /opt/codex-primer-repo
+
 mkdir -p /opt/codex-primer/{codex-home,scripts,state/history,logs,run,config}
 
-cp scripts/prime.sh /opt/codex-primer/scripts/
-cp scripts/check-result.sh /opt/codex-primer/scripts/
+cp scripts/prime.sh scripts/check-result.sh /opt/codex-primer/scripts/
 cp config/config.toml /opt/codex-primer/codex-home/config.toml
+cp config/notify.env.example /opt/codex-primer/config/notify.env
 
 chmod 700 /opt/codex-primer/scripts/*.sh
 chmod 700 /opt/codex-primer/codex-home /opt/codex-primer/config
-```
-
-配置 Bark：
-
-```bash
-cp config/notify.env.example /opt/codex-primer/config/notify.env
 chmod 600 /opt/codex-primer/config/notify.env
+
+# 仅安装实际使用的三个 systemd 单元
+cp systemd/codex-primer.timer \
+   systemd/codex-primer-dispatch.service \
+   systemd/codex-primer@.service \
+   /etc/systemd/system/
 ```
 
-然后编辑：
-
-```text
-BARK_SERVER="https://api.day.app"
-BARK_KEY="你的 Bark Key"
-```
-
-## Codex 登录
-
-推荐直接在独立的 `CODEX_HOME` 下登录：
+### Codex 登录
 
 ```bash
 CODEX_HOME=/opt/codex-primer/codex-home codex login --device-auth
-```
-
-检查：
-
-```bash
 CODEX_HOME=/opt/codex-primer/codex-home codex login status
 ```
 
-成功时应看到：
+登录凭证保存在本机 `/opt/codex-primer/codex-home/auth.json`，**不得上传到 GitHub**。
 
-```text
-Logged in using ChatGPT
-```
+### Bark 配置
 
-注意：`auth.json` 包含敏感登录凭证，禁止提交 Git。
-
-## 安装 systemd
+编辑 `/opt/codex-primer/config/notify.env`：
 
 ```bash
-cp systemd/* /etc/systemd/system/
+BARK_SERVER="https://api.day.app"
+BARK_KEY="replace-with-your-bark-key"
+```
+
+使用你自己的 Key，并保持文件权限为 `600`。Bark 地址和 Key 只应存放在服务器本地，不要写入仓库或日志。
+
+### 启动定时器
+
+```bash
 systemctl daemon-reload
 systemctl enable --now codex-primer.timer
+
+# 从旧版升级时停用独立 Bark 检查定时器，避免重复通知
 systemctl disable --now codex-primer-check.timer 2>/dev/null || true
-```
 
-查看定时任务：
-
-```bash
 systemctl list-timers --all | grep codex-primer
 ```
 
-## 手工测试
+`codex-primer@.service` 设置 `TimeoutStartSec=480`，覆盖两次 180 秒调用、30 秒重试间隔、通知发送及少量额外开销。
 
-只执行 Codex：
+## 手动测试
 
 ```bash
 /opt/codex-primer/scripts/prime.sh manual
+echo "exit=$?"
 cat /opt/codex-primer/state/latest.json
 ```
 
-执行 Codex 时会自动发送 Bark，不需要再单独运行检查脚本：
+**执行 `prime.sh manual` 已经会自动发送 Bark**，不需要再调用 `check-result.sh`，否则会重复通知。一次完整失败测试可能耗时约 7 分钟。
+
+查看最近一次手动执行的汇总日志：
 
 ```bash
-/opt/codex-primer/scripts/prime.sh manual && \
-/opt/codex-primer/scripts/check-result.sh manual
+tail -n 50 "$(ls -t /opt/codex-primer/state/history/*_manual.log | head -1)"
 ```
 
-成功状态示例：
+正常通知日志应包含 `Bark notification sent for slot manual`；若发送失败，汇总日志会记录 Bark 的错误退出码。
 
-```json
-{
-  "model": "gpt-5.6-luna",
-  "exit_code": 0,
-  "result": "success"
-}
-```
+## 更新已有部署
 
-## 常见故障
-
-### exit_code=124
-
-`124` 是 GNU `timeout` 的超时返回码。本项目当前 Codex 超时时间为 180 秒。
-
-如果日志只出现：
-
-```text
-Reading additional input from stdin...
-```
-
-说明 Codex CLI 可能卡在 stdin 读取。
-
-可以手工验证：
+在已经克隆到 `/opt/codex-primer-repo` 的服务器上：
 
 ```bash
-printf '%s\n' 'Reply with exactly: OK' | \
-CODEX_HOME=/opt/codex-primer/codex-home \
-timeout 30 codex -m gpt-5.6-luna exec --skip-git-repo-check -
+cd /opt/codex-primer-repo
+git pull --ff-only origin main
+
+BACKUP="/opt/codex-primer/backup-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP"
+cp -a /opt/codex-primer/scripts/prime.sh /opt/codex-primer/scripts/check-result.sh "$BACKUP/"
+cp -a /etc/systemd/system/codex-primer@.service "$BACKUP/"
+
+bash -n scripts/prime.sh scripts/check-result.sh
+cp scripts/prime.sh scripts/check-result.sh /opt/codex-primer/scripts/
+chmod 700 /opt/codex-primer/scripts/*.sh
+cp systemd/codex-primer@.service /etc/systemd/system/
+
+systemctl disable --now codex-primer-check.timer 2>/dev/null || true
+systemctl daemon-reload
+systemctl restart codex-primer.timer
 ```
 
-### 401 Unauthorized
+如果未来更新了主定时器或 dispatch 服务，也需要将对应的 `systemd/` 文件复制到 `/etc/systemd/system/` 并执行 `systemctl daemon-reload`。
 
-如果出现：
+**更新时不要覆盖**运行目录中的 `codex-home/auth.json`、`config/notify.env`、`state/`、`run/` 和 `logs/`。
 
-```text
-Missing bearer or basic authentication in header
-```
+## 状态与排障
 
-通常需要重新登录独立的 Codex Home：
+- 最新状态：`/opt/codex-primer/state/latest.json`
+- 历史 JSON、汇总日志及单次尝试日志：`/opt/codex-primer/state/history/`
+- 主定时器：`systemctl status codex-primer.timer`
+- 最近调度记录：`journalctl -u codex-primer-dispatch.service --no-pager -n 50`
+- 具体实例：`journalctl -u 'codex-primer@12:05.service' --no-pager -n 50`
 
-```bash
-CODEX_HOME=/opt/codex-primer/codex-home codex logout
-CODEX_HOME=/opt/codex-primer/codex-home codex login --device-auth
-```
+JSON 包含 `result`、`exit_code`、`attempts_used`、`max_attempts`、`failure_reason`、`attempts` 等字段。
 
-随后再次手工测试。
+常见问题：
 
-### bubblewrap warning
+- **退出码 124**：GNU `timeout` 中止了单次 Codex 调用；可检查对应 `_attemptN.log`
+- **`failed to refresh available models`**：模型列表刷新异常；可能与 CLI、网络或服务端有关，不能单凭这一行断定根因
+- **401 / Unauthorized**：检查 Codex 登录状态，必要时重新登录
+- **Bark 没收到**：检查汇总日志、`notify.env`、Bark 服务连通性；Codex 成功不代表通知一定成功
+- **`journalctl --since today` 没有记录**：服务器可能使用 UTC；北京时间早上 07:00 是前一天 UTC 23:00
 
-如果提示系统 PATH 找不到 bubblewrap，但同时显示 Codex 会使用 bundled bubblewrap，且请求可以正常完成，则一般不是故障根因。
+## 安全与注意事项
 
-## 当前计划
+- 不要提交 `codex-home/auth.json`、`config/notify.env`、历史状态、日志和备份；`.gitignore` 仅能防止未跟踪文件被意外添加，不能清除已经提交的历史
+- 不要公开包含令牌、会话内容或敏感请求数据的原始日志
+- 主定时器使用 `Persistent=true`：服务器关机错过执行时间后，重启可能补触发一次；dispatch 按**实际触发时的北京时间**确定时段，不一定是原计划时段
+- 仓库保留了旧版 `codex-primer-check*` systemd 文件供参考，**当前部署不启用它们**
+- 脚本中的模型、提示词、执行时刻、超时和重试参数目前为固定配置，修改后需重新部署对应文件
 
-北京时间：
+## License
 
-```text
-Codex   Bark 检查
-07:00   07:05
-12:05   12:10
-17:10   17:15
-22:15   22:20
-```
-
-## 已知注意事项
-
-Codex 主 timer 使用了：
-
-```ini
-Persistent=true
-```
-
-如果 VPS 在计划时间关机，重启后 systemd 可能补跑错过的任务。当前运行配置按原服务器真实文件保留；如不希望补跑，可后续将其改为 `Persistent=false` 或移除该配置，并给 dispatch 增加时段校验。
-
-## 安全
-
-以下内容不要提交：
-
-- `/opt/codex-primer/codex-home/auth.json`
-- `/opt/codex-primer/config/notify.env`
-- `state/`
-- `logs/`
-- `run/`
-- `*.bak-*`
+当前仓库未附带许可证。若希望允许他人复制、修改和分发，请单独选择并添加适当的开源许可证。
