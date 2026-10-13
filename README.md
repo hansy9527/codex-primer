@@ -67,6 +67,14 @@ sudo systemctl disable --now codex-primer.timer
 
 ### 3.2 推荐：设备码登录（适合无桌面的 VPS）
 
+**重要：先在 ChatGPT 端允许设备码登录。** 这是 OpenAI 官方文档列出的前置条件，也是首次在无浏览器 VPS 上登录时容易遗漏的步骤。
+
+- **个人 ChatGPT 账号**：在浏览器登录 [ChatGPT](https://chatgpt.com/)，打开 **Settings（设置）→ Security（安全）**，找到设备码身份验证（Device Code Authentication）相关选项并启用。界面文字可能因版本变化而不同。
+- **Business / Enterprise 工作空间**：需要有权限的工作空间管理员在工作空间权限中启用 **Enable device code authentication for Codex CLI**。普通成员可能看不到此开关。
+- **官方文档**：[Codex Authentication — Login on headless devices](https://developers.openai.com/codex/auth#login-on-headless-devices)，其中明确要求先在 ChatGPT 安全设置或工作空间权限中启用设备码登录，并介绍替代登录方案。
+
+> 设备码只用于当次登录授权，不要把设备码发给其他人，也不要把它当作 Bark Key 或 API Key。
+
 在服务器上执行：
 
 ```bash
