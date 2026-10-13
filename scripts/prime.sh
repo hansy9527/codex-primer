@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 set -u
-BASE_DIR="/opt/codex-primer"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_HOME="$BASE_DIR/codex-home"
 HISTORY_DIR="$BASE_DIR/state/history"
 LOCK_FILE="$BASE_DIR/run/prime.lock"
-APP_TZ="Asia/Shanghai"
-MODEL="gpt-5.6-luna"
-PROMPT="Reply with exactly: OK"
-TIMEOUT_SECONDS=180
-MAX_ATTEMPTS=2
-RETRY_DELAY_SECONDS=30
+# shellcheck disable=SC1091
+source "$BASE_DIR/config/app.env"
 SLOT="${1:-manual}"
 RUN_ID="$(TZ="$APP_TZ" date +'%Y%m%d_%H%M%S')"
 SLOT_PART="${SLOT//:/-}"
@@ -37,7 +33,7 @@ for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
     RESULT=success
     REASON=""
   elif [ "$EXIT_CODE" -eq 124 ]; then
-    REASON="180 秒超时，Codex 未完成"
+    REASON="${TIMEOUT_SECONDS} 秒超时，Codex 未完成"
   elif [ "$EXIT_CODE" -eq 0 ]; then
     REASON="Codex 退出但未返回独立一行 OK"
   else
