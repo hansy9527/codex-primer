@@ -1,96 +1,85 @@
 # Codex Primer
 
-在 Linux VPS 上使用 systemd 定时调用 Codex CLI，并在执行完成后通过 Bark 推送结果。
-
-## 功能
-
-- 按北京时间每天 07:00、12:05、17:10、22:15 执行
-- 使用模型 `gpt-5.6-luna`，发送简短测试提示词并验证返回 `OK`
-- 每次最多尝试 2 次，每次超时 180 秒；失败后间隔 30 秒重试
-- 完成后立即发送 Bark 成功或失败通知
-- 保存运行状态及日志，并通过文件锁避免并发执行
+Linux VPS 上的 Codex CLI 定时执行工具：按自定义时间调用模型，失败自动重试，并通过 Bark 推送最终结果。
 
 ## 环境要求
 
-- Linux（systemd）
-- Bash、Python 3、curl、flock、GNU timeout、Git
+- Linux + systemd、Bash、Python 3、Git、curl、flock、GNU timeout
 - Node.js、npm、Codex CLI
 - 可用的 Codex 登录账号和 Bark Key
 
-安装 Codex CLI：
-
 ```bash
 npm install -g @openai/codex@latest
-codex --version
 ```
 
 ## 安装
 
-**当前版本的运行目录固定为 `/opt/codex-primer`。** 脚本和 systemd 单元使用了该绝对路径；如果希望安装在其他位置，需要同步修改 `scripts/prime.sh`、`scripts/check-result.sh` 和 `systemd/codex-primer@.service` 中的路径。
+```bash
+git clone https://github.com/hansy9527/codex-primer.git
+cd codex-primer
+sudo bash install.sh
+```
 
-克隆仓库并部署：
+默认运行目录为 `/opt/codex-primer`。也可以在安装时指定其他**绝对路径**：
 
 ```bash
-git clone https://github.com/hansy9527/codex-primer.git /opt/codex-primer-repo
-cd /opt/codex-primer-repo
-
-mkdir -p /opt/codex-primer/{codex-home,scripts,state/history,logs,run,config}
-
-cp scripts/prime.sh scripts/check-result.sh /opt/codex-primer/scripts/
-cp config/config.toml /opt/codex-primer/codex-home/config.toml
-cp config/notify.env.example /opt/codex-primer/config/notify.env
-
-chmod 700 /opt/codex-primer/scripts/*.sh
-chmod 700 /opt/codex-primer/codex-home /opt/codex-primer/config
-chmod 600 /opt/codex-primer/config/notify.env
-
-cp systemd/codex-primer.timer \
-   systemd/codex-primer-dispatch.service \
-   systemd/codex-primer@.service \
-   /etc/systemd/system/
+sudo bash install.sh /data/codex-primer
 ```
+
+运行目录和 Git 克隆目录可以不同。下面用 `/opt/codex-primer` 举例；使用自定义目录时，请将示例中的路径替换为实际路径。
+
+安装程序会生成 systemd 单元、创建运行目录，并在首次安装时生成 `config/app.env` 和 `config/notify.env`，再次安装不会覆盖已有配置。
 
 ## 配置
 
-### 1. Codex 登录
+编辑 `/opt/codex-primer/config/app.env`：
 
 ```bash
-CODEX_HOME=/opt/codex-primer/codex-home codex login --device-auth
-CODEX_HOME=/opt/codex-primer/codex-home codex login status
+APP_TZ="Asia/Shanghai"
+SCHEDULE_TIMES="07:00 12:05 17:10 22:15"
+MODEL="gpt-5.6-luna"
+PROMPT="Reply with exactly: OK"
+TIMEOUT_SECONDS=180
+MAX_ATTEMPTS=2
+RETRY_DELAY_SECONDS=30
 ```
 
-### 2. Bark 通知
+| 配置项 | 说明 |
+| --- | --- |
+| `APP_TZ` | 时区，如 `Asia/Shanghai` |
+| `SCHEDULE_TIMES` | 每天执行的时间，空格分隔，**不限于 4 个**；例如 `08:00 20:30` |
+| `MODEL` | Codex CLI 使用的模型 |
+| `PROMPT` | 发给 Codex 的测试提示词 |
+| `TIMEOUT_SECONDS` | 每次尝试的超时秒数 |
+| `MAX_ATTEMPTS` | 最大尝试次数，包含首次执行 |
+| `RETRY_DELAY_SECONDS` | 失败后的重试等待秒数 |
 
-编辑 `/opt/codex-primer/config/notify.env`：
+提示：当前脚本以 Codex 输出包含**独立一行 `OK`**且退出码为 0 作为成功标准；修改 `PROMPT` 时请保留该约定。
+
+时间可以任意增减，例如每天一次 `SCHEDULE_TIMES="09:00"`，或每天六次 `SCHEDULE_TIMES="06:00 09:00 12:00 15:00 18:00 21:00"`。时间必须为 24 小时制的 `HH:MM`，不能重复。
+
+编辑 Bark 配置 `/opt/codex-primer/config/notify.env`：
 
 ```bash
 BARK_SERVER="https://api.day.app"
 BARK_KEY="replace-with-your-bark-key"
 ```
 
-把 `BARK_KEY` 替换成自己的 Key。
-
-### 3. 运行参数
-
-在 `/opt/codex-primer/scripts/prime.sh` 中可调整：
-
-| 参数 | 默认值 | 作用 |
-| --- | --- | --- |
-| `MODEL` | `gpt-5.6-luna` | Codex 模型 |
-| `PROMPT` | `Reply with exactly: OK` | 测试提示词 |
-| `TIMEOUT_SECONDS` | `180` | 单次超时（秒） |
-| `MAX_ATTEMPTS` | `2` | 最大尝试次数 |
-| `RETRY_DELAY_SECONDS` | `30` | 重试间隔（秒） |
-
-执行时间在 `/etc/systemd/system/codex-primer.timer` 的 `OnCalendar` 中配置，修改后执行 `systemctl daemon-reload && systemctl restart codex-primer.timer`。
-
-## 启动
+配置 Codex 登录：
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now codex-primer.timer
-systemctl list-timers --all | grep codex-primer
+CODEX_HOME=/opt/codex-primer/codex-home codex login --device-auth
+CODEX_HOME=/opt/codex-primer/codex-home codex login status
 ```
+
+**修改 `app.env` 后，必须重新运行安装脚本**，以重新生成 systemd 时间表并计算服务超时：
+
+```bash
+cd codex-primer
+sudo bash install.sh /opt/codex-primer
+```
+
+安装脚本会启用并重启定时器。不要把密钥写进 `app.env`；Bark Key 只放在 `notify.env` 中。
 
 ## 手动测试
 
@@ -100,58 +89,35 @@ echo "exit=$?"
 cat /opt/codex-primer/state/latest.json
 ```
 
-运行完成后会自动发送 Bark，无需另外执行通知脚本。
+测试完成会自动发送 Bark，无需另外运行通知脚本。
 
-## 查看运行结果
+## 查看任务
 
 ```bash
-# 最近一次执行状态
-cat /opt/codex-primer/state/latest.json
-
-# 历史日志
-ls -lt /opt/codex-primer/state/history/ | head
-
-# 定时器状态
+systemctl list-timers --all | grep codex-primer
 systemctl status codex-primer.timer
-
-# systemd 调度日志
 journalctl -u codex-primer-dispatch.service -n 50 --no-pager
+ls -lt /opt/codex-primer/state/history/ | head
 ```
+
+运行状态保存在 `state/latest.json`，历史结果与每次尝试的日志保存在 `state/history/`。
 
 ## 更新
 
-在现有部署上更新脚本：
-
 ```bash
-cd /opt/codex-primer-repo
-git pull --ff-only origin main
-
-cp scripts/prime.sh scripts/check-result.sh /opt/codex-primer/scripts/
-chmod 700 /opt/codex-primer/scripts/*.sh
-
-cp systemd/codex-primer.timer \
-   systemd/codex-primer-dispatch.service \
-   systemd/codex-primer@.service \
-   /etc/systemd/system/
-
-systemctl daemon-reload
-systemctl restart codex-primer.timer
+cd codex-primer
+git pull --ff-only
+sudo bash install.sh /opt/codex-primer
 ```
 
-更新时保留服务器上的 `codex-home/auth.json`、`config/notify.env` 及 `state/`，不要用仓库文件覆盖它们。
+安装脚本不会覆盖已有的 `config/app.env`、`config/notify.env` 或 Codex 登录凭证。建议更新前自行备份运行目录。
 
 ## 停止
 
 ```bash
-systemctl disable --now codex-primer.timer
+sudo systemctl disable --now codex-primer.timer
 ```
 
 ## 安全
 
-不要提交以下运行时文件：
-
-- `codex-home/auth.json`
-- `config/notify.env`
-- `state/`、`logs/`、`run/`
-
-`.gitignore` 已包含相关忽略规则。公开仓库前仍应检查 Git 提交历史。
+`config/app.env`、`config/notify.env`、`codex-home/auth.json`、`state/`、`logs/` 和 `run/` 不应提交到 Git。仓库已设置对应的 `.gitignore` 规则。
