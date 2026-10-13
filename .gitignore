@@ -13,3 +13,6 @@ run/
 
 # Misc
 .DS_Store
+
+# Local application settings
+config/app.env

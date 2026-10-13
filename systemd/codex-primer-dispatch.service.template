@@ -1,0 +1,6 @@
+[Unit]
+Description=Dispatch Codex Primer Slot
+
+[Service]
+Type=oneshot
+ExecStart=__BASE_DIR__/scripts/dispatch.sh
