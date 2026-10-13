@@ -6,4 +6,5 @@ Type=oneshot
 ExecStart=/opt/codex-primer/scripts/prime.sh %i
 User=root
 Group=root
-TimeoutStartSec=240
+# 2 x 180s Codex + 30s retry delay + up to 25s Bark + startup overhead.
+TimeoutStartSec=480
