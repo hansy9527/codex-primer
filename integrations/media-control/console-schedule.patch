@@ -1,0 +1,22 @@
+--- a/server.py
++++ b/server.py
+@@ -47 +47 @@
+-    if action not in ('status', 'log', 'run', 'retry'):
++    if action not in ('status', 'log', 'run', 'retry', 'schedule'):
+@@ -50,0 +51,2 @@
++    if action == 'schedule' and identifier not in ('on', 'off'):
++        raise ValueError('无效的开关状态')
+@@ -531,0 +534,8 @@
++        if path == BASE+'api/primer/schedule':
++            try:
++                if type(data.get('enabled')) is not bool:
++                    raise ValueError('需要明确的开关状态')
++                self.send(200, primer('schedule', 'on' if data['enabled'] else 'off'))
++            except ValueError as exc:self.send(400, {'error': str(exc)})
++            except RuntimeError as exc:self.send(502, {'error': str(exc)})
++            return
+--- a/static/index.html
++++ b/static/index.html
+@@ -79 +79 @@
+-          <div class="lyric-footer"><span id="primer-timer">—</span><div><button id="primer-refresh" class="secondary">刷新 Primer</button><button id="primer-run" class="primary" disabled>手动执行 →</button></div></div>
++          <div class="lyric-footer"><span id="primer-timer">—</span><div><button id="primer-toggle" class="secondary" role="switch" aria-checked="false" disabled>自动定时运行 · 尚未读取</button><button id="primer-refresh" class="secondary">刷新 Primer</button><button id="primer-run" class="primary" disabled>手动执行 →</button></div></div>
