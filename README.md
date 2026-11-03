@@ -356,3 +356,8 @@ sudo bash install.sh /opt/codex-primer
 目前项目仅实现 **Bark（iOS）推送**，**尚未提供 Android 推送支持**。维护者目前没有 Android 设备，无法对 Android 推送方案进行实际测试和验收。
 
 欢迎有 Android 设备的开发者通过 **Pull Request（PR）** 贡献适配方案、测试结果及相关文档。建议保留现有 Bark 通知功能，并避免在代码、测试数据或提交记录中包含真实推送凭证。
+
+
+## 可选：媒体控制台自动运行开关
+
+已有媒体控制台可接入 Codex Primer 的自动定时运行开关，关闭计划后仍可手动执行、重试和查看日志。相关控制脚本、前端脚本、增量补丁与部署要求见 [媒体控制台集成](integrations/media-control/README.md)。该集成不会由默认安装程序自动部署。
